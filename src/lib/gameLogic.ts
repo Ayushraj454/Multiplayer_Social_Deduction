@@ -227,6 +227,16 @@ export async function startVoting(roomId: string): Promise<void> {
 }
 
 export async function castVote(roomId: string, voterId: string, votedForId: string): Promise<void> {
+  const { data: voter } = await supabase
+    .from('players')
+    .select('is_liar')
+    .eq('id', voterId)
+    .maybeSingle();
+
+  if (voter?.is_liar) {
+    throw new Error('The liar cannot vote');
+  }
+
   const { error: deleteError } = await supabase
     .from('votes')
     .delete()
@@ -272,6 +282,12 @@ export async function revealResults(roomId: string): Promise<void> {
   const liarPlayer = players.find(p => p.is_liar);
   const liarCaught = mostVotedId === liarPlayer?.id;
 
+  const nonLiarPlayers = players.filter(p => !p.is_liar);
+  const numCaught = nonLiarPlayers.filter(np =>
+    votes?.find(v => v.voter_id === np.id)?.voted_for_id === liarPlayer?.id
+  ).length;
+  const numMissed = nonLiarPlayers.length - numCaught;
+
   for (const player of players) {
     const isLiar = player.is_liar;
     const votedForLiar = votes?.find(v => v.voter_id === player.id)?.voted_for_id === liarPlayer?.id;
@@ -279,9 +295,10 @@ export async function revealResults(roomId: string): Promise<void> {
 
     if (isLiar) {
       asLiar = 1;
-      if (liarCaught) { caught = 1; losses = 1; } else { escaped = 1; wins = 1; points = 1; }
+      points = numMissed;
+      if (liarCaught) { caught = 1; losses = 1; } else { escaped = 1; wins = 1; }
     } else {
-      if (liarCaught && votedForLiar) { wins = 1; points = 1; }
+      if (votedForLiar) { wins = 1; points = 1; }
       else { losses = 1; }
     }
 

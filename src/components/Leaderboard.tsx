@@ -107,9 +107,7 @@ export function Leaderboard({ onClose, currentPlayerName }: LeaderboardProps) {
             <Star size={12} className="text-amber-500" />
             <span><span className="text-amber-400 font-bold">+1</span> catch the liar</span>
             <span className="text-slate-600">|</span>
-            <span><span className="text-amber-400 font-bold">+1</span> escape as liar</span>
-            <span className="text-slate-600">|</span>
-            <span><span className="text-slate-500 font-bold">0</span> otherwise</span>
+            <span><span className="text-amber-400 font-bold">+1</span> fool a player as liar</span>
           </div>
         </div>
 

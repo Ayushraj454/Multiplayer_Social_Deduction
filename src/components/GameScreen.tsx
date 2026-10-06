@@ -124,7 +124,8 @@ export function GameScreen({ roomId, playerId, onLeave }: GameScreenProps) {
   }, [roomId, playerId, player]);
 
   const myVote = votes.find(v => v.voter_id === playerId);
-  const hasEveryoneVoted = votes.length === players.length && players.length > 0;
+  const nonLiarPlayers = players.filter(p => !p.is_liar);
+  const hasEveryoneVoted = votes.length === nonLiarPlayers.length && nonLiarPlayers.length > 0;
 
   if (!room || !player) {
     return (
@@ -170,7 +171,7 @@ export function GameScreen({ roomId, playerId, onLeave }: GameScreenProps) {
             players={players} playerId={playerId} votes={votes}
             myVote={myVote} selectedVote={selectedVote}
             onCastVote={handleCastVote} hasEveryoneVoted={hasEveryoneVoted}
-            onRevealResults={handleRevealResults} isHost={player.is_host}
+            onRevealResults={handleRevealResults} isHost={player.is_host} isLiar={player.is_liar}
           />
         )}
 
@@ -446,19 +447,27 @@ function DiscussionPhase({ room, players, playerId, player, messages, timeLeft, 
   );
 }
 
-function VotingPhase({ players, playerId, votes, myVote, selectedVote, onCastVote, hasEveryoneVoted, onRevealResults, isHost }: {
+function VotingPhase({ players, playerId, votes, myVote, selectedVote, onCastVote, hasEveryoneVoted, onRevealResults, isHost, isLiar }: {
   players: Player[]; playerId: string; votes: VoteType[]; myVote: VoteType | undefined; selectedVote: string | null;
-  onCastVote: (id: string) => void; hasEveryoneVoted: boolean; onRevealResults: () => void; isHost: boolean;
+  onCastVote: (id: string) => void; hasEveryoneVoted: boolean; onRevealResults: () => void; isHost: boolean; isLiar: boolean;
 }) {
   return (
     <div className="space-y-6 animate-slide-up">
       <div className="bg-slate-800/80 backdrop-blur-lg rounded-3xl shadow-2xl border border-rose-500/30 p-8">
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold text-white mb-2">Who is the Liar?</h2>
-          <p className="text-slate-400">Vote for the player you think is hiding the truth</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {players.filter(p => p.id !== playerId).map((p) => {
+        {isLiar ? (
+          <div className="text-center py-8">
+            <EyeOff size={48} className="text-red-400 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-white mb-2">You are the Liar!</h2>
+            <p className="text-slate-400">The liar doesn't get to vote. Sit back and watch them try to find you.</p>
+          </div>
+        ) : (
+          <>
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold text-white mb-2">Who is the Liar?</h2>
+              <p className="text-slate-400">Vote for the player you think is hiding the truth</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {players.filter(p => p.id !== playerId).map((p) => {
             const isSelected = selectedVote === p.id || myVote?.voted_for_id === p.id;
             return (
               <button
@@ -487,14 +496,16 @@ function VotingPhase({ players, playerId, votes, myVote, selectedVote, onCastVot
             </div>
           </div>
         )}
+          </>
+        )}
       </div>
       <div className="bg-slate-800/80 backdrop-blur-lg rounded-2xl shadow-2xl border border-slate-700 p-4">
         <div className="flex items-center justify-between">
           <span className="text-slate-400">Votes cast</span>
-          <span className="text-white font-bold">{players.filter(p => votes.find(v => v.voter_id === p.id)).length}/{players.length}</span>
+          <span className="text-white font-bold">{votes.length}/{players.filter(p => !p.is_liar).length}</span>
         </div>
         <div className="mt-2 h-2 bg-slate-700 rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-rose-500 to-red-500 rounded-full transition-all duration-500" style={{ width: `${(votes.length / players.length) * 100}%` }}></div>
+          <div className="h-full bg-gradient-to-r from-rose-500 to-red-500 rounded-full transition-all duration-500" style={{ width: `${(votes.length / Math.max(players.filter(p => !p.is_liar).length, 1)) * 100}%` }}></div>
         </div>
       </div>
       {isHost && hasEveryoneVoted && (
@@ -526,10 +537,16 @@ function ResultsPhase({ room, players, votes, onPlayAgain, onLeave, onShowLeader
   const liarPlayer = players.find(p => p.is_liar);
   const liarCaught = mostVotedId === liarPlayer?.id;
 
+  const nonLiarPlayersList = players.filter(p => !p.is_liar);
+  const numCaught = nonLiarPlayersList.filter(np =>
+    votes.find(v => v.voter_id === np.id)?.voted_for_id === liarPlayer?.id
+  ).length;
+  const numMissed = nonLiarPlayersList.length - numCaught;
+
   const getPlayerPoints = (p: Player) => {
-    if (p.is_liar) return liarCaught ? 0 : 1;
+    if (p.is_liar) return numMissed;
     const votedForLiar = votes.find(v => v.voter_id === p.id)?.voted_for_id === liarPlayer?.id;
-    return (liarCaught && votedForLiar) ? 1 : 0;
+    return votedForLiar ? 1 : 0;
   };
 
   const sortedPlayers = [...players].sort((a, b) => getPlayerPoints(b) - getPlayerPoints(a));
@@ -589,12 +606,10 @@ function ResultsPhase({ room, players, votes, onPlayAgain, onLeave, onShowLeader
             );
           })}
         </div>
-        <div className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-500">
-          <span className="text-amber-400 font-bold">+1</span> catch the liar
+        <div className="mt-4 flex items-center justify-center flex-wrap gap-2 text-xs text-slate-500">
+          <span className="text-amber-400 font-bold">+1</span> each player who catches the liar
           <span className="text-slate-600">|</span>
-          <span className="text-amber-400 font-bold">+1</span> escape as liar
-          <span className="text-slate-600">|</span>
-          <span className="text-slate-500 font-bold">0</span> otherwise
+          <span className="text-amber-400 font-bold">+1</span> per player the liar fools
         </div>
       </div>
       <div className="flex gap-3">
